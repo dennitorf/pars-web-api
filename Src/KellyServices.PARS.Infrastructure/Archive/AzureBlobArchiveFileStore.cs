@@ -29,7 +29,7 @@ namespace KellyServices.PARS.Infrastructure.Archive
                 await blob.UploadAsync(content, new BlobUploadOptions
                 {
                     HttpHeaders = new BlobHttpHeaders { ContentType = contentType },
-                Metadata = new Dictionary<string, string>(metadata),
+                    Metadata = new Dictionary<string, string>(metadata),
                     Conditions = new BlobRequestConditions { IfNoneMatch = ETag.All }
                 }, cancellationToken);
             }

@@ -4,7 +4,10 @@ namespace KellyServices.PARS.Application.Features.ArchiveDocuments.Queries.Searc
 {
     public class SearchArchiveDocumentsQuery : IRequest<SearchArchiveResponse>
     {
-        public string Employee { get; set; } public string DocumentType { get; set; } public int? FromYear { get; set; } public int? ToYear { get; set; }
+        public string Employee { get; set; }
+        public string DocumentType { get; set; }
+        public int? FromYear { get; set; }
+        public int? ToYear { get; set; }
         public int Page { get; set; } = 1; public int PageSize { get; set; } = 50;
     }
 }

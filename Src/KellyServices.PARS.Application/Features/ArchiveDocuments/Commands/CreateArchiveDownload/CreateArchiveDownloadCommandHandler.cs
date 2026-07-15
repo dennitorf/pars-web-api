@@ -19,9 +19,22 @@ namespace KellyServices.PARS.Application.Features.ArchiveDocuments.Commands.Crea
         {
             var document = await db.ArchiveDocuments.SingleOrDefaultAsync(item => item.Id == request.DocumentId && item.Status == ArchiveDocumentStatus.Available, cancellationToken)
                 ?? throw new NotFoundException(nameof(ArchiveDocument), request.DocumentId);
-            var audit = new ArchiveAuditEvent { Id = Guid.NewGuid(), OccurredAt = DateTimeOffset.UtcNow, ActorId = user.UserId, ActorDisplayName = user.DisplayName, Action = ArchiveAuditAction.Downloaded,
-                Outcome = "Success", EmployeeArchiveId = document.EmployeeArchiveId, ArchiveDocumentId = document.Id, Details = "Secure download created.", CorrelationId = user.CorrelationId,
-                CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true };
+            var audit = new ArchiveAuditEvent
+            {
+                Id = Guid.NewGuid(),
+                OccurredAt = DateTimeOffset.UtcNow,
+                ActorId = user.UserId,
+                ActorDisplayName = user.DisplayName,
+                Action = ArchiveAuditAction.Downloaded,
+                Outcome = "Success",
+                EmployeeArchiveId = document.EmployeeArchiveId,
+                ArchiveDocumentId = document.Id,
+                Details = "Secure download created.",
+                CorrelationId = user.CorrelationId,
+                CreatedDate = DateTime.UtcNow,
+                CreatedBy = user.UserId,
+                IsActive = true
+            };
             db.ArchiveAuditEvents.Add(audit); await db.SaveChangesAsync(cancellationToken);
             return new DocumentDownloadResponse(audit.Id, document.Id, "Ready", $"/api/archive-documents/{document.Id}/content?disposition=attachment");
         }

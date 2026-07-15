@@ -13,7 +13,7 @@ namespace KellyServices.PARS.Infrastructure
     {
         public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<IEmailService, EmailService>();   
+            services.AddSingleton<IEmailService, EmailService>();
             services.Configure<AzureBlobOptions>(configuration.GetSection(AzureBlobOptions.SectionName));
             services.Configure<SftpOptions>(configuration.GetSection(SftpOptions.SectionName));
             services.AddSingleton(serviceProvider =>

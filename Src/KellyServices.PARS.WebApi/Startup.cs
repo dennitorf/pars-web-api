@@ -57,7 +57,7 @@ namespace KellyServices.PARS.WebApi
             {
                 options.Filters.Add(typeof(PARSCustomExceptionFilterAttribute));
             });
-            
+
             var allowedOrigins = !String.IsNullOrEmpty(Configuration["CORS_ORIGINS"]) ? Configuration["CORS_ORIGINS"].Split(",") : new string[] { "http://localhost:3000" };
 
             services.AddCors(options =>

@@ -23,21 +23,21 @@ namespace KellyServices.PARS.Persistence
             {
                 services.AddDbContext<AppDbContext>(options =>
                 {
-                    options.UseSqlServer(GetConnectionString(configuration) , b => b.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
+                    options.UseSqlServer(GetConnectionString(configuration), b => b.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
                 });
             }
 
             return services;
         }
 
-        private static string GetConnectionString(IConfiguration configuration) 
+        private static string GetConnectionString(IConfiguration configuration)
         {
             string cs = "";
 
             if (!String.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_SERVER")) &&
                 !String.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_USER")) &&
                 !String.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_PASSWORD")) &&
-                !String.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_DATABASE"))) 
+                !String.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_DATABASE")))
             {
                 SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder();
 
@@ -49,12 +49,12 @@ namespace KellyServices.PARS.Persistence
                 builder.TrustServerCertificate = true;
 
                 return builder.ConnectionString;
-            }                
-            else 
-            {                                
+            }
+            else
+            {
                 cs = configuration.GetConnectionString("DatabaseConnectionString");
             }
-                        
+
             return cs;
         }
     }

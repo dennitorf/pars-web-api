@@ -28,8 +28,21 @@ namespace KellyServices.PARS.Application.Features.ArchiveDocuments.Queries.Searc
             db.ArchiveAuditEvents.Add(NewAudit(ArchiveAuditAction.Searched, null, null, $"employee={request.Employee}; documentType={request.DocumentType}; fromYear={request.FromYear}; toYear={request.ToYear}; total={total}"));
             await db.SaveChangesAsync(cancellationToken); return new SearchArchiveResponse(total, page, pageSize, items);
         }
-        private ArchiveAuditEvent NewAudit(ArchiveAuditAction action, Guid? employeeId, Guid? documentId, string details) => new() { Id = Guid.NewGuid(), OccurredAt = DateTimeOffset.UtcNow, ActorId = currentUser.UserId,
-            ActorDisplayName = currentUser.DisplayName, Action = action, Outcome = "Success", EmployeeArchiveId = employeeId, ArchiveDocumentId = documentId, Details = details, CorrelationId = currentUser.CorrelationId,
-            CreatedDate = DateTime.UtcNow, CreatedBy = currentUser.UserId, IsActive = true };
+        private ArchiveAuditEvent NewAudit(ArchiveAuditAction action, Guid? employeeId, Guid? documentId, string details) => new()
+        {
+            Id = Guid.NewGuid(),
+            OccurredAt = DateTimeOffset.UtcNow,
+            ActorId = currentUser.UserId,
+            ActorDisplayName = currentUser.DisplayName,
+            Action = action,
+            Outcome = "Success",
+            EmployeeArchiveId = employeeId,
+            ArchiveDocumentId = documentId,
+            Details = details,
+            CorrelationId = currentUser.CorrelationId,
+            CreatedDate = DateTime.UtcNow,
+            CreatedBy = currentUser.UserId,
+            IsActive = true
+        };
     }
 }

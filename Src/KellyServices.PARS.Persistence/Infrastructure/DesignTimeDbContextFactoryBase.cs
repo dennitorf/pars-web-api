@@ -15,7 +15,7 @@ namespace KellyServices.PARS.Persistence.Infrastructure
 
         public TContext CreateDbContext(string[] args)
         {
-            var basePath = Directory.GetCurrentDirectory() + string.Format("{0}..{0}KellyServices.PARS.WebApi", Path.DirectorySeparatorChar);            
+            var basePath = Directory.GetCurrentDirectory() + string.Format("{0}..{0}KellyServices.PARS.WebApi", Path.DirectorySeparatorChar);
             return Create(basePath, Environment.GetEnvironmentVariable(AspNetCoreEnvironment));
         }
         private TContext Create(string basePath, string environmentName)
@@ -29,7 +29,7 @@ namespace KellyServices.PARS.Persistence.Infrastructure
                 .AddEnvironmentVariables()
                 .Build();
 
-            var connectionString = configuration.GetConnectionString(ConnectionStringName);            
+            var connectionString = configuration.GetConnectionString(ConnectionStringName);
 
             return Create(connectionString);
         }
@@ -39,7 +39,7 @@ namespace KellyServices.PARS.Persistence.Infrastructure
             if (string.IsNullOrEmpty(connectionString))
             {
                 throw new ArgumentException($"Connection string '{ConnectionStringName}' is null or empty.", nameof(connectionString));
-            }            
+            }
 
             var optionsBuilder = new DbContextOptionsBuilder<TContext>();
 

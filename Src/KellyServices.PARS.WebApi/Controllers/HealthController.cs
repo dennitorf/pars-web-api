@@ -16,6 +16,6 @@ namespace KellyServices.PARS.WebApi.Controllers
         {
             return StatusCode(505);
         }
-        
+
     }
 }

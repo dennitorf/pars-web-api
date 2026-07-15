@@ -14,7 +14,7 @@ namespace KellyServices.PARS.Persistence.Contexts
         {
             base.OnModelCreating(modelBuilder);
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-        }        
+        }
         public DbSet<EmployeeArchive> EmployeeArchives { set; get; }
         public DbSet<ArchiveDocument> ArchiveDocuments { set; get; }
         public DbSet<ArchiveIngestionBatch> ArchiveIngestionBatches { set; get; }

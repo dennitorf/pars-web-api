@@ -18,19 +18,19 @@ namespace KellyServices.PARS.WebApi
 
             using (var scope = host.Services.CreateScope())
             {
-                var services  = scope.ServiceProvider; 
+                var services = scope.ServiceProvider;
 
-                try 
+                try
                 {
                     var context = services.GetRequiredService<AppDbContext>();
 
                     if (context.Database.IsSqlServer())
                     {
                         await context.Database.MigrateAsync();
-                        
+
                         var seeder = new AppDbContextSeeder();
                         seeder.SeedEverything(context);
-                    }                    
+                    }
 
                 }
                 catch (Exception ex)
@@ -42,12 +42,12 @@ namespace KellyServices.PARS.WebApi
                     throw;
                 }
             }
-            
+
             await host.RunAsync();
         }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)                
+            Host.CreateDefaultBuilder(args)
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
                     webBuilder.UseStartup<Startup>();

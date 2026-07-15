@@ -19,11 +19,35 @@ namespace KellyServices.PARS.Application.Features.ArchiveDocuments.Commands.Crea
         {
             var document = await db.ArchiveDocuments.SingleOrDefaultAsync(item => item.Id == request.DocumentId && item.Status == ArchiveDocumentStatus.Available, cancellationToken)
                 ?? throw new NotFoundException(nameof(ArchiveDocument), request.DocumentId);
-            var fulfillment = new ArchiveFulfillment { Id = Guid.NewGuid(), ArchiveDocumentId = document.Id, EmployeeEmail = request.EmployeeEmail, RequestedBy = user.UserId, BusinessReason = request.BusinessReason,
-                Status = FulfillmentStatus.PendingReview, RequestedAt = DateTimeOffset.UtcNow, CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true };
-            db.ArchiveFulfillments.Add(fulfillment); db.ArchiveAuditEvents.Add(new ArchiveAuditEvent { Id = Guid.NewGuid(), OccurredAt = DateTimeOffset.UtcNow, ActorId = user.UserId, ActorDisplayName = user.DisplayName,
-                Action = ArchiveAuditAction.Emailed, Outcome = "PendingReview", EmployeeArchiveId = document.EmployeeArchiveId, ArchiveDocumentId = document.Id, Details = $"Fulfillment {fulfillment.Id} queued.", CorrelationId = user.CorrelationId,
-                CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true });
+            var fulfillment = new ArchiveFulfillment
+            {
+                Id = Guid.NewGuid(),
+                ArchiveDocumentId = document.Id,
+                EmployeeEmail = request.EmployeeEmail,
+                RequestedBy = user.UserId,
+                BusinessReason = request.BusinessReason,
+                Status = FulfillmentStatus.PendingReview,
+                RequestedAt = DateTimeOffset.UtcNow,
+                CreatedDate = DateTime.UtcNow,
+                CreatedBy = user.UserId,
+                IsActive = true
+            };
+            db.ArchiveFulfillments.Add(fulfillment); db.ArchiveAuditEvents.Add(new ArchiveAuditEvent
+            {
+                Id = Guid.NewGuid(),
+                OccurredAt = DateTimeOffset.UtcNow,
+                ActorId = user.UserId,
+                ActorDisplayName = user.DisplayName,
+                Action = ArchiveAuditAction.Emailed,
+                Outcome = "PendingReview",
+                EmployeeArchiveId = document.EmployeeArchiveId,
+                ArchiveDocumentId = document.Id,
+                Details = $"Fulfillment {fulfillment.Id} queued.",
+                CorrelationId = user.CorrelationId,
+                CreatedDate = DateTime.UtcNow,
+                CreatedBy = user.UserId,
+                IsActive = true
+            });
             await db.SaveChangesAsync(cancellationToken); return new EmailFulfillmentResponse(fulfillment.Id, document.Id, fulfillment.EmployeeEmail, fulfillment.Status.ToString(), fulfillment.RequestedAt);
         }
     }

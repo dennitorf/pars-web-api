@@ -21,9 +21,24 @@ namespace KellyServices.PARS.Application.Features.PayrollRequests
 
         public async Task<PayrollRequestDetail> SubmitAsync(string firstName, string lastName, string email, string kellyId, string lastFour, DateTime from, DateTime to, string documentTypes, CancellationToken cancellationToken)
         {
-            var request = new PayrollDataRequest { Id = Guid.NewGuid(), RequestNumber = $"PARS-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(), EmployeeFirstName = firstName.Trim(), EmployeeLastName = lastName.Trim(),
-                EmployeeEmail = email.Trim(), KellyId = kellyId?.Trim(), TaxIdLastFour = lastFour?.Trim(), FromDate = from.Date, ToDate = to.Date, RequestedDocumentTypes = string.IsNullOrWhiteSpace(documentTypes) ? "W-2,Paystub" : documentTypes,
-                SubmittedAt = DateTimeOffset.UtcNow, Status = PayrollRequestStatus.Submitted, CreatedDate = DateTime.UtcNow, CreatedBy = "employee-request", IsActive = true };
+            var request = new PayrollDataRequest
+            {
+                Id = Guid.NewGuid(),
+                RequestNumber = $"PARS-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
+                EmployeeFirstName = firstName.Trim(),
+                EmployeeLastName = lastName.Trim(),
+                EmployeeEmail = email.Trim(),
+                KellyId = kellyId?.Trim(),
+                TaxIdLastFour = lastFour?.Trim(),
+                FromDate = from.Date,
+                ToDate = to.Date,
+                RequestedDocumentTypes = string.IsNullOrWhiteSpace(documentTypes) ? "W-2,Paystub" : documentTypes,
+                SubmittedAt = DateTimeOffset.UtcNow,
+                Status = PayrollRequestStatus.Submitted,
+                CreatedDate = DateTime.UtcNow,
+                CreatedBy = "employee-request",
+                IsActive = true
+            };
             db.PayrollDataRequests.Add(request); await FindCandidatesAsync(request, false, cancellationToken);
             db.ArchiveAuditEvents.Add(Audit(ArchiveAuditAction.RequestSubmitted, "Success", null, null, request.Id, $"Request {request.RequestNumber} submitted; status={request.Status}."));
             await db.SaveChangesAsync(cancellationToken); return await GetAsync(request.Id, cancellationToken);
@@ -74,8 +89,20 @@ namespace KellyServices.PARS.Application.Features.PayrollRequests
             if (!request.ConfirmedEmployeeArchiveId.HasValue) Invalid("Candidate", "A payroll specialist must confirm the employee record first.");
             var documents = request.Documents.Where(item => item.IsSelected).ToList(); if (documents.Count == 0) Invalid("Documents", "At least one reviewed document must be selected.");
             var recipient = string.IsNullOrWhiteSpace(email) ? request.EmployeeEmail : email;
-            foreach (var item in documents) db.ArchiveFulfillments.Add(new ArchiveFulfillment { Id = Guid.NewGuid(), ArchiveDocumentId = item.ArchiveDocumentId, PayrollDataRequestId = request.Id, EmployeeEmail = recipient,
-                RequestedBy = user.UserId, BusinessReason = $"Payroll request {request.RequestNumber}: {notes}", Status = FulfillmentStatus.PendingReview, RequestedAt = DateTimeOffset.UtcNow, CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true });
+            foreach (var item in documents) db.ArchiveFulfillments.Add(new ArchiveFulfillment
+            {
+                Id = Guid.NewGuid(),
+                ArchiveDocumentId = item.ArchiveDocumentId,
+                PayrollDataRequestId = request.Id,
+                EmployeeEmail = recipient,
+                RequestedBy = user.UserId,
+                BusinessReason = $"Payroll request {request.RequestNumber}: {notes}",
+                Status = FulfillmentStatus.PendingReview,
+                RequestedAt = DateTimeOffset.UtcNow,
+                CreatedDate = DateTime.UtcNow,
+                CreatedBy = user.UserId,
+                IsActive = true
+            });
             request.Status = PayrollRequestStatus.FulfillmentQueued; request.SpecialistNotes = notes; request.ModifiedDate = DateTime.UtcNow; request.LastModifiedBy = user.UserId;
             db.ArchiveAuditEvents.Add(Audit(ArchiveAuditAction.RequestFulfilled, "PendingReview", request.ConfirmedEmployeeArchiveId, null, request.Id, $"{documents.Count} documents queued for {recipient}."));
             await db.SaveChangesAsync(cancellationToken); return await GetAsync(id, cancellationToken);
@@ -91,8 +118,19 @@ namespace KellyServices.PARS.Application.Features.PayrollRequests
                 if (employee.EmployeeName.Equals(full, StringComparison.OrdinalIgnoreCase)) { score += 25; matched.Add("employee name"); } else if (deep && employee.EmployeeName.Contains(last, StringComparison.OrdinalIgnoreCase)) { score += 10; matched.Add("last name"); }
                 if (!string.IsNullOrEmpty(request.TaxIdLastFour) && employee.MaskedTaxId.EndsWith(request.TaxIdLastFour)) { score += 15; matched.Add("tax ID last four"); }
                 if (score == 0 || request.Candidates.Any(item => item.EmployeeArchiveId == employee.Id)) continue;
-                request.Candidates.Add(new PayrollRequestCandidate { Id = Guid.NewGuid(), EmployeeArchiveId = employee.Id, ConfidenceScore = score, MatchedAttributes = string.Join(", ", matched), Status = PayrollRequestCandidateStatus.Suggested,
-                    CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true });
+                var candidate = new PayrollRequestCandidate
+                {
+                    Id = Guid.NewGuid(),
+                    PayrollDataRequestId = request.Id,
+                    EmployeeArchiveId = employee.Id,
+                    ConfidenceScore = score,
+                    MatchedAttributes = string.Join(", ", matched),
+                    Status = PayrollRequestCandidateStatus.Suggested,
+                    CreatedDate = DateTime.UtcNow,
+                    CreatedBy = user.UserId,
+                    IsActive = true
+                };
+                db.PayrollRequestCandidates.Add(candidate);
             }
             request.Status = request.Candidates.Count > 0 ? PayrollRequestStatus.CandidateReview : (deep ? PayrollRequestStatus.UnableToFulfill : PayrollRequestStatus.DatabaseSearchRequired);
         }
@@ -100,10 +138,29 @@ namespace KellyServices.PARS.Application.Features.PayrollRequests
         {
             var types = request.RequestedDocumentTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             var documents = await db.ArchiveDocuments.AsNoTracking().Where(item => item.EmployeeArchiveId == request.ConfirmedEmployeeArchiveId && item.Status == ArchiveDocumentStatus.Available && item.DocumentYear >= request.FromDate.Year && item.DocumentYear <= request.ToDate.Year && types.Contains(item.DocumentType)).ToListAsync(cancellationToken);
-            foreach (var document in documents) if (!request.Documents.Any(item => item.ArchiveDocumentId == document.Id)) request.Documents.Add(new PayrollRequestDocument { Id = Guid.NewGuid(), ArchiveDocumentId = document.Id, CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true });
+            foreach (var document in documents)
+            {
+                if (request.Documents.Any(item => item.ArchiveDocumentId == document.Id)) continue;
+                var requestDocument = new PayrollRequestDocument { Id = Guid.NewGuid(), PayrollDataRequestId = request.Id, ArchiveDocumentId = document.Id, CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true };
+                db.PayrollRequestDocuments.Add(requestDocument);
+            }
         }
-        private ArchiveAuditEvent Audit(ArchiveAuditAction action, string outcome, Guid? employeeId, Guid? documentId, Guid requestId, string details) => new() { Id = Guid.NewGuid(), OccurredAt = DateTimeOffset.UtcNow,
-            ActorId = user.UserId, ActorDisplayName = user.DisplayName, Action = action, Outcome = outcome, EmployeeArchiveId = employeeId, ArchiveDocumentId = documentId, Details = details, CorrelationId = requestId.ToString(), CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true };
+        private ArchiveAuditEvent Audit(ArchiveAuditAction action, string outcome, Guid? employeeId, Guid? documentId, Guid requestId, string details) => new()
+        {
+            Id = Guid.NewGuid(),
+            OccurredAt = DateTimeOffset.UtcNow,
+            ActorId = user.UserId,
+            ActorDisplayName = user.DisplayName,
+            Action = action,
+            Outcome = outcome,
+            EmployeeArchiveId = employeeId,
+            ArchiveDocumentId = documentId,
+            Details = details,
+            CorrelationId = requestId.ToString(),
+            CreatedDate = DateTime.UtcNow,
+            CreatedBy = user.UserId,
+            IsActive = true
+        };
         private static void Invalid(string field, string message) => throw new ValidationException(new List<ValidationFailure> { new(field, message) });
     }
 }

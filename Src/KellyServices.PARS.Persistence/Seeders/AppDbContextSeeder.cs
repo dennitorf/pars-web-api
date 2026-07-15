@@ -3,7 +3,7 @@
 namespace KellyServices.PARS.Persistence.Seeders
 {
     public class AppDbContextSeeder
-    {        
+    {
 
         public void SeedEverything(AppDbContext db)
         {

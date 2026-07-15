@@ -22,7 +22,21 @@ namespace KellyServices.PARS.Application.Features.ArchiveDocuments.Commands.Prev
             db.ArchiveAuditEvents.Add(Audit(document, ArchiveAuditAction.Viewed, "Preview opened.")); await db.SaveChangesAsync(cancellationToken);
             return new DocumentPreviewResponse(document.ToSummary(), $"/api/archive-documents/{document.Id}/content?disposition=inline", "Preview access is audited.");
         }
-        private ArchiveAuditEvent Audit(ArchiveDocument document, ArchiveAuditAction action, string details) => new() { Id = Guid.NewGuid(), OccurredAt = DateTimeOffset.UtcNow, ActorId = user.UserId, ActorDisplayName = user.DisplayName,
-            Action = action, Outcome = "Success", EmployeeArchiveId = document.EmployeeArchiveId, ArchiveDocumentId = document.Id, Details = details, CorrelationId = user.CorrelationId, CreatedDate = DateTime.UtcNow, CreatedBy = user.UserId, IsActive = true };
+        private ArchiveAuditEvent Audit(ArchiveDocument document, ArchiveAuditAction action, string details) => new()
+        {
+            Id = Guid.NewGuid(),
+            OccurredAt = DateTimeOffset.UtcNow,
+            ActorId = user.UserId,
+            ActorDisplayName = user.DisplayName,
+            Action = action,
+            Outcome = "Success",
+            EmployeeArchiveId = document.EmployeeArchiveId,
+            ArchiveDocumentId = document.Id,
+            Details = details,
+            CorrelationId = user.CorrelationId,
+            CreatedDate = DateTime.UtcNow,
+            CreatedBy = user.UserId,
+            IsActive = true
+        };
     }
 }
