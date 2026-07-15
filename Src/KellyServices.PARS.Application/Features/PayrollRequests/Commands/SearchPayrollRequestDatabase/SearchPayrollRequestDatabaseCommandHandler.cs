@@ -1,0 +1,3 @@
+using KellyServices.PARS.Application.Features.PayrollRequests.Models; using MediatR; using System.Threading; using System.Threading.Tasks;
+namespace KellyServices.PARS.Application.Features.PayrollRequests.Commands.SearchPayrollRequestDatabase
+{ public class SearchPayrollRequestDatabaseCommandHandler : IRequestHandler<SearchPayrollRequestDatabaseCommand, PayrollRequestDetail> { private readonly PayrollRequestWorkflowService service; public SearchPayrollRequestDatabaseCommandHandler(PayrollRequestWorkflowService service) => this.service = service; public Task<PayrollRequestDetail> Handle(SearchPayrollRequestDatabaseCommand r, CancellationToken c) => service.SearchAsync(r.RequestId, c); } }

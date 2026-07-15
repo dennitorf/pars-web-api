@@ -6,6 +6,21 @@ ASP.NET Core microservice for the Payroll Archive Retrieval System (PARS), creat
 
 The SQL-backed model contains employees, archive documents, ingestion batches, audit events, and email fulfillments. Entity Framework configurations add unique indexes for Kelly ID, source/checksum, and blob location.
 
+## CQRS structure
+
+The API follows the same template convention as `plants-api`: Web API controllers only bind HTTP input, call `IMediator.Send`, and shape the HTTP response. Business rules, persistence, auditing, storage access, and workflow transitions live under `KellyServices.PARS.Application/Features` in feature-specific `Commands`, `Queries`, handlers, validators, and DTOs. MediatR logging, validation, and performance behaviors run for every request.
+
+```text
+Application/Features/
+  ArchiveDocuments/{Commands,Queries,Models}
+  ArchiveOperations/{Queries,Models}
+  ArchiveIngestion/Commands/RunArchiveIngestion
+  PayrollRequests/{Commands,Queries,Models}
+WebApi/
+  Controllers/                 HTTP and Mediator only
+  BackgroundServices/         cron trigger only
+```
+
 - `GET /api/archive-documents` — search metadata by Kelly ID/name, document type, and year range.
 - `GET /api/archive-documents/{documentId}/preview` — record the preview audit event.
 - `GET /api/archive-documents/{documentId}/content` — stream the private blob through the authorized API.
@@ -13,6 +28,8 @@ The SQL-backed model contains employees, archive documents, ingestion batches, a
 - `POST /api/archive-documents/{documentId}/email-fulfillments` — persist an audited fulfillment request.
 - `GET /api/archive-operations/employees` — query document counts, storage size, and completeness by employee.
 - `GET /api/archive-operations/audit-events` — query activity by actor, employee, document, event ID, action, and date.
+- `GET /api/archive-operations/ingestion-batches` — query ingestion history, counts, status, and errors.
+- `POST /api/archive-ingestion/runs` — execute the ingestion command on demand.
 - `POST /api/payroll-requests` — receive an employee request and run deterministic attribute matching.
 - `GET /api/payroll-requests` and `GET /api/payroll-requests/{id}` — query the specialist queue and request detail.
 - `POST /api/payroll-requests/{id}/database-search` — initiate the deeper employee-record search when deterministic matching fails.
@@ -21,11 +38,13 @@ The SQL-backed model contains employees, archive documents, ingestion batches, a
 - `POST /api/payroll-requests/{id}/fulfill` — create request-linked, audited email fulfillment records for selected documents.
 - `GET /api/health` — template health endpoint.
 
-## SFTP ingestion worker
+## SFTP ingestion command
 
-The optional hosted worker polls for one CSV manifest, validates the whole manifest, downloads each referenced file to a temporary stream, verifies byte length and SHA-256, uploads it to a private Azure Blob container, and records the outcome. A successfully transferred SFTP file is moved to the processed directory. The manifest is moved only after every row succeeds.
+`RunArchiveIngestionCommand` owns the complete ingestion use case. It checks for one CSV manifest, validates the whole manifest, downloads each referenced file to a temporary stream, verifies byte length and SHA-256, uploads it to a private Azure Blob container, and records the outcome. A successfully transferred SFTP file is moved to the processed directory. The manifest is moved only after every row succeeds.
 
-The deterministic blob name is `year/document-type/kelly-id/sha256.ext`; reprocessing the same manifest is therefore idempotent. Invalid or oversized manifests remain on SFTP and are never partially processed. Run only one worker-enabled API replica unless a distributed lease is added.
+The command can be dispatched by the on-demand endpoint or by `ArchiveIngestionScheduler`. The scheduler contains no ingestion logic; it calculates the next UTC occurrence from a five-field cron expression and sends the same MediatR command. A process-level execution lock prevents scheduled and on-demand runs from overlapping within one API instance.
+
+The deterministic blob name is `year/document-type/kelly-id/sha256.ext`; reprocessing the same manifest is therefore idempotent. Invalid or oversized manifests remain on SFTP and are never partially processed. In a multi-replica deployment, enable the scheduler on only one replica unless a distributed lease is added.
 
 ## Payroll request workflow
 
@@ -44,6 +63,7 @@ Enable and configure with environment variables (double underscores represent ne
 
 ```text
 ArchiveIngestion__Enabled=true
+ArchiveIngestion__CronExpression=*/5 * * * *
 ArchiveIngestion__MetadataRemotePath=/outbound/pars/archive-metadata.csv
 ArchiveIngestion__ProcessedDirectory=/outbound/pars/processed
 ArchiveIngestion__BlobContainer=payroll-archive

@@ -1,0 +1,3 @@
+using KellyServices.PARS.Application.Features.PayrollRequests.Models; using MediatR; using System.Collections.Generic; using System.Threading; using System.Threading.Tasks;
+namespace KellyServices.PARS.Application.Features.PayrollRequests.Queries.GetPayrollRequests
+{ public class GetPayrollRequestsQueryHandler : IRequestHandler<GetPayrollRequestsQuery, IReadOnlyList<PayrollRequestSummary>> { private readonly PayrollRequestWorkflowService service; public GetPayrollRequestsQueryHandler(PayrollRequestWorkflowService service) => this.service = service; public Task<IReadOnlyList<PayrollRequestSummary>> Handle(GetPayrollRequestsQuery r, CancellationToken c) => service.ListAsync(r.Status, r.Search, c); } }

@@ -4,6 +4,8 @@ using KellyServices.PARS.Persistence;
 using KellyServices.PARS.Application.Features.ArchiveIngestion;
 using KellyServices.PARS.WebApi.BackgroundServices;
 using KellyServices.PARS.WebApi.Filters.Exceptions;
+using KellyServices.PARS.Application.Common.Interfaces.Identity;
+using KellyServices.PARS.WebApi.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpsPolicy;
@@ -37,9 +39,12 @@ namespace KellyServices.PARS.WebApi
             services.AddInfrastructure(Configuration);
             services.Configure<ArchiveIngestionOptions>(Configuration.GetSection(ArchiveIngestionOptions.SectionName));
             services.AddSingleton<ArchiveMetadataCsvParser>();
+            services.AddHttpContextAccessor();
+            services.AddScoped<ICurrentUserService, CurrentUserService>();
+            services.AddScoped<KellyServices.PARS.Application.Features.PayrollRequests.PayrollRequestWorkflowService>();
             if (Configuration.GetValue<bool>($"{ArchiveIngestionOptions.SectionName}:Enabled"))
             {
-                services.AddHostedService<ArchiveIngestionWorker>();
+                services.AddHostedService<ArchiveIngestionScheduler>();
             }
 
             services.AddControllers();

@@ -1,0 +1,3 @@
+using KellyServices.PARS.Application.Features.PayrollRequests.Models; using MediatR; using System.Threading; using System.Threading.Tasks;
+namespace KellyServices.PARS.Application.Features.PayrollRequests.Commands.SelectPayrollRequestDocument
+{ public class SelectPayrollRequestDocumentCommandHandler : IRequestHandler<SelectPayrollRequestDocumentCommand, PayrollRequestDetail> { private readonly PayrollRequestWorkflowService service; public SelectPayrollRequestDocumentCommandHandler(PayrollRequestWorkflowService service) => this.service = service; public Task<PayrollRequestDetail> Handle(SelectPayrollRequestDocumentCommand r, CancellationToken c) => service.SelectDocumentAsync(r.RequestId, r.DocumentId, r.IsSelected, c); } }
