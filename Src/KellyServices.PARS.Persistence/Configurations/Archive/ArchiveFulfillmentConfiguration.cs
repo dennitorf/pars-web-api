@@ -18,6 +18,7 @@ namespace KellyServices.PARS.Persistence.Configurations.Archive
             builder.HasIndex(item => new { item.ArchiveDocumentId, item.RequestedAt });
             builder.HasIndex(item => new { item.Status, item.RequestedAt });
             builder.HasOne(item => item.ArchiveDocument).WithMany().HasForeignKey(item => item.ArchiveDocumentId).OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne(item => item.PayrollDataRequest).WithMany().HasForeignKey(item => item.PayrollDataRequestId).OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

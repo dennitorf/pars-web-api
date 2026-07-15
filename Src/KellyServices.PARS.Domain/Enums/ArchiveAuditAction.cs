@@ -6,6 +6,10 @@ namespace KellyServices.PARS.Domain.Enums
         Viewed,
         Downloaded,
         Emailed,
-        Ingested
+        Ingested,
+        RequestSubmitted,
+        CandidateReviewed,
+        RequestSearched,
+        RequestFulfilled
     }
 }

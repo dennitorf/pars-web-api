@@ -1,4 +1,5 @@
 ﻿using KellyServices.PARS.Domain.Entities.Archive;
+using KellyServices.PARS.Domain.Entities.Requests;
 using Microsoft.EntityFrameworkCore;
 
 namespace KellyServices.PARS.Persistence.Contexts
@@ -19,5 +20,8 @@ namespace KellyServices.PARS.Persistence.Contexts
         public DbSet<ArchiveIngestionBatch> ArchiveIngestionBatches { set; get; }
         public DbSet<ArchiveAuditEvent> ArchiveAuditEvents { set; get; }
         public DbSet<ArchiveFulfillment> ArchiveFulfillments { set; get; }
+        public DbSet<PayrollDataRequest> PayrollDataRequests { set; get; }
+        public DbSet<PayrollRequestCandidate> PayrollRequestCandidates { set; get; }
+        public DbSet<PayrollRequestDocument> PayrollRequestDocuments { set; get; }
     }
 }

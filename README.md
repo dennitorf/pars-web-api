@@ -13,6 +13,12 @@ The SQL-backed model contains employees, archive documents, ingestion batches, a
 - `POST /api/archive-documents/{documentId}/email-fulfillments` — persist an audited fulfillment request.
 - `GET /api/archive-operations/employees` — query document counts, storage size, and completeness by employee.
 - `GET /api/archive-operations/audit-events` — query activity by actor, employee, document, event ID, action, and date.
+- `POST /api/payroll-requests` — receive an employee request and run deterministic attribute matching.
+- `GET /api/payroll-requests` and `GET /api/payroll-requests/{id}` — query the specialist queue and request detail.
+- `POST /api/payroll-requests/{id}/database-search` — initiate the deeper employee-record search when deterministic matching fails.
+- `POST /api/payroll-requests/{id}/candidates/{candidateId}/confirm` — record the specialist’s employee-record decision and load documents in the requested range.
+- `POST /api/payroll-requests/{id}/documents/{documentId}/selection` — include or exclude a reviewed document.
+- `POST /api/payroll-requests/{id}/fulfill` — create request-linked, audited email fulfillment records for selected documents.
 - `GET /api/health` — template health endpoint.
 
 ## SFTP ingestion worker
@@ -20,6 +26,12 @@ The SQL-backed model contains employees, archive documents, ingestion batches, a
 The optional hosted worker polls for one CSV manifest, validates the whole manifest, downloads each referenced file to a temporary stream, verifies byte length and SHA-256, uploads it to a private Azure Blob container, and records the outcome. A successfully transferred SFTP file is moved to the processed directory. The manifest is moved only after every row succeeds.
 
 The deterministic blob name is `year/document-type/kelly-id/sha256.ext`; reprocessing the same manifest is therefore idempotent. Invalid or oversized manifests remain on SFTP and are never partially processed. Run only one worker-enabled API replica unless a distributed lease is added.
+
+## Payroll request workflow
+
+An employee request contains name, email, a date range, desired document types, and either Kelly ID or the last four tax-ID digits. PARS proposes employee archive candidates and records which attributes contributed to the confidence score; a payroll specialist must confirm the record before any documents can be selected. If no deterministic candidate exists, the request enters `DatabaseSearchRequired` and must use the explicit database-search action. Confirming a candidate loads only available documents for that employee, requested type, and year range. Fulfillment is blocked until the employee record is confirmed and at least one document has been reviewed and selected.
+
+Request, candidate, document-selection, and fulfillment identifiers are `Guid`. Fulfillments retain a foreign key to the originating request, and material workflow transitions are written to the archive audit log. The tax-ID fragment is sensitive identity evidence: production SQL configuration must encrypt it at rest, restrict it to the request-processing role, and redact it from logs and responses.
 
 Required CSV columns:
 

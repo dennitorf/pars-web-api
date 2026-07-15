@@ -1,5 +1,6 @@
 using KellyServices.PARS.Domain.Common;
 using KellyServices.PARS.Domain.Enums;
+using KellyServices.PARS.Domain.Entities.Requests;
 using System;
 
 namespace KellyServices.PARS.Domain.Entities.Archive
@@ -8,6 +9,8 @@ namespace KellyServices.PARS.Domain.Entities.Archive
     {
         public Guid ArchiveDocumentId { get; set; }
         public ArchiveDocument ArchiveDocument { get; set; }
+        public Guid? PayrollDataRequestId { get; set; }
+        public PayrollDataRequest PayrollDataRequest { get; set; }
         public string EmployeeEmail { get; set; }
         public string RequestedBy { get; set; }
         public string BusinessReason { get; set; }
