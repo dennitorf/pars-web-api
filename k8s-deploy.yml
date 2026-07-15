@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pars-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: pars-api
+  template:
+    metadata:
+      labels:
+        component: pars-api
+    spec:
+      containers:
+        - name: pars-api
+          image: hub.docker.com/pars-api:{BUILD_NO}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          env:
+            - name: DB_DATABASE
+              value: {DB_DATABASE}
+            - name: DB_PASSWORD
+              value: {DB_PASSWORD}
+            - name: DB_SERVER
+              value: {DB_SERVER}
+            - name: DB_USER
+              value: {DB_USER}
+            - name: CORS_ORIGINS
+              value: "{CORS_ORIGINS}"
+            - name: ASPNETCORE_Kestrel__Certificates__Default__Path
+              value: "/etc/ssl/certs/tls.crt"
+            - name: ASPNETCORE_Kestrel__Certificates__Default__KeyPath
+              value: "/etc/ssl/certs/tls.key"
+          volumeMounts:
+            - name: tls-secret
+              mountPath: "/etc/ssl/certs"
+              readOnly: true
+      volumes:
+        - name: tls-secret
+          secret:
+            secretName: pars-api-tls

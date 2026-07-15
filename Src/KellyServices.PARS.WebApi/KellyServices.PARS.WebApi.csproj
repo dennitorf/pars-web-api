@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <UserSecretsId>e08b32a3-4c69-4376-bac9-c2cf5a0ff21f</UserSecretsId>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileContext>..\..</DockerfileContext>
+  </PropertyGroup>
+
+  <ItemGroup>    
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\KellyServices.PARS.Application\KellyServices.PARS.Application.csproj" />
+    <ProjectReference Include="..\KellyServices.PARS.Infrastructure\KellyServices.PARS.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>
