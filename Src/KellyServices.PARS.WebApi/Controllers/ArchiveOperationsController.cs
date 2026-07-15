@@ -1,7 +1,12 @@
+using KellyServices.PARS.Domain.Enums;
+using KellyServices.PARS.Persistence.Contexts;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace KellyServices.PARS.WebApi.Controllers
 {
@@ -10,62 +15,63 @@ namespace KellyServices.PARS.WebApi.Controllers
     [Produces("application/json")]
     public class ArchiveOperationsController : ControllerBase
     {
-        private static readonly IReadOnlyList<EmployeeArchiveSummary> Employees = new[]
-        {
-            new EmployeeArchiveSummary("K1048291", "Jordan Ellis", 184, 7, 177, 2019, 2025, "Complete", DateTimeOffset.Parse("2026-07-15T10:42:00-04:00")),
-            new EmployeeArchiveSummary("K2075520", "Morgan Chen", 156, 7, 149, 2019, 2025, "Complete", DateTimeOffset.Parse("2026-07-15T10:39:00-04:00")),
-            new EmployeeArchiveSummary("K3301844", "Taylor Brooks", 121, 6, 115, 2020, 2025, "Review", DateTimeOffset.Parse("2026-07-15T09:58:00-04:00")),
-            new EmployeeArchiveSummary("K4481920", "Cameron Diaz", 87, 4, 83, 2022, 2025, "Processing", DateTimeOffset.Parse("2026-07-15T09:41:00-04:00"))
-        };
+        private readonly AppDbContext dbContext;
+        public ArchiveOperationsController(AppDbContext dbContext) => this.dbContext = dbContext;
 
-        private static readonly IReadOnlyList<ArchiveAuditEvent> Events = new[]
-        {
-            new ArchiveAuditEvent(Guid.Parse("a2b18fd7-6d5c-4c55-8f5c-51ef9d1129ce"), DateTimeOffset.Parse("2026-07-15T11:14:08-04:00"), "Priya Shah", "Viewed", "K1048291", "Jordan Ellis", "W-2 · 2024", "Success"),
-            new ArchiveAuditEvent(Guid.Parse("7c01e6a3-e970-49cc-bec9-a44b09dc5435"), DateTimeOffset.Parse("2026-07-15T11:11:32-04:00"), "Priya Shah", "Searched", "K1048291", "Jordan Ellis", "All documents", "Success"),
-            new ArchiveAuditEvent(Guid.Parse("b9064d20-46d3-472c-8578-4f72cf1982d3"), DateTimeOffset.Parse("2026-07-15T10:53:19-04:00"), "Marcus Reed", "Downloaded", "K2075520", "Morgan Chen", "W-2 · 2022", "Success"),
-            new ArchiveAuditEvent(Guid.Parse("6f7a019c-43b5-4b29-bae9-d5a5d6b319f4"), DateTimeOffset.Parse("2026-07-15T10:48:44-04:00"), "Elena Ruiz", "Emailed", "K3301844", "Taylor Brooks", "Paystub · Dec 2024", "PendingReview")
-        };
-
-        /// <summary>Queries per-employee archive counts and storage completeness.</summary>
         [HttpGet("employees")]
-        [ProducesResponseType(typeof(EmployeeArchiveSearchResponse), 200)]
-        public ActionResult<EmployeeArchiveSearchResponse> GetEmployees([FromQuery] string query = null, [FromQuery] string status = null)
+        public async Task<ActionResult<EmployeeArchiveSearchResponse>> GetEmployees([FromQuery] string query = null, [FromQuery] string status = null,
+            [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
         {
-            var results = Employees.AsEnumerable();
-            if (!string.IsNullOrWhiteSpace(query))
-            {
-                results = results.Where(employee => employee.EmployeeId.Contains(query, StringComparison.OrdinalIgnoreCase) || employee.EmployeeName.Contains(query, StringComparison.OrdinalIgnoreCase));
-            }
-            if (!string.IsNullOrWhiteSpace(status))
-            {
-                results = results.Where(employee => employee.StorageStatus.Equals(status, StringComparison.OrdinalIgnoreCase));
-            }
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 200);
+            var employees = dbContext.EmployeeArchives.AsNoTracking().AsQueryable();
+            if (!string.IsNullOrWhiteSpace(query)) employees = employees.Where(item => item.KellyId.Contains(query) || item.EmployeeName.Contains(query));
+            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ArchiveStorageStatus>(status, true, out var parsedStatus))
+                employees = employees.Where(item => item.StorageStatus == parsedStatus);
 
-            var items = results.ToList();
-            return Ok(new EmployeeArchiveSearchResponse(items.Count, items));
+            var total = await employees.CountAsync(cancellationToken);
+            var items = await employees.OrderBy(item => item.EmployeeName).Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(item => new EmployeeArchiveSummary(item.Id, item.KellyId, item.EmployeeName,
+                    item.Documents.Count(document => document.Status == ArchiveDocumentStatus.Available),
+                    item.Documents.Count(document => document.Status == ArchiveDocumentStatus.Available && document.DocumentType == "W-2"),
+                    item.Documents.Count(document => document.Status == ArchiveDocumentStatus.Available && document.DocumentType == "Paystub"),
+                    item.Documents.Where(document => document.Status == ArchiveDocumentStatus.Available).Min(document => (int?)document.DocumentYear),
+                    item.Documents.Where(document => document.Status == ArchiveDocumentStatus.Available).Max(document => (int?)document.DocumentYear),
+                    item.StorageStatus.ToString(), item.ModifiedDate == default ? item.CreatedDate : item.ModifiedDate))
+                .ToListAsync(cancellationToken);
+            return Ok(new EmployeeArchiveSearchResponse(total, page, pageSize, items));
         }
 
-        /// <summary>Queries immutable archive audit activity by user, employee, document, event ID, or action.</summary>
         [HttpGet("audit-events")]
-        [ProducesResponseType(typeof(ArchiveAuditSearchResponse), 200)]
-        public ActionResult<ArchiveAuditSearchResponse> GetAuditEvents([FromQuery] string query = null, [FromQuery] string action = null, [FromQuery] DateTimeOffset? from = null, [FromQuery] DateTimeOffset? to = null)
+        public async Task<ActionResult<ArchiveAuditSearchResponse>> GetAuditEvents([FromQuery] string query = null, [FromQuery] string action = null,
+            [FromQuery] DateTimeOffset? from = null, [FromQuery] DateTimeOffset? to = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 100,
+            CancellationToken cancellationToken = default)
         {
-            var results = Events.AsEnumerable();
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 500);
+            var events = dbContext.ArchiveAuditEvents.AsNoTracking().Include(item => item.EmployeeArchive).Include(item => item.ArchiveDocument).AsQueryable();
             if (!string.IsNullOrWhiteSpace(query))
-            {
-                results = results.Where(item => $"{item.Id} {item.Actor} {item.EmployeeId} {item.EmployeeName} {item.Document}".Contains(query, StringComparison.OrdinalIgnoreCase));
-            }
-            if (!string.IsNullOrWhiteSpace(action)) results = results.Where(item => item.Action.Equals(action, StringComparison.OrdinalIgnoreCase));
-            if (from.HasValue) results = results.Where(item => item.Timestamp >= from.Value);
-            if (to.HasValue) results = results.Where(item => item.Timestamp <= to.Value);
+                events = events.Where(item => item.ActorId.Contains(query) || item.ActorDisplayName.Contains(query) || item.CorrelationId.Contains(query)
+                    || (item.EmployeeArchive != null && (item.EmployeeArchive.KellyId.Contains(query) || item.EmployeeArchive.EmployeeName.Contains(query)))
+                    || (item.ArchiveDocument != null && item.ArchiveDocument.OriginalFileName.Contains(query)));
+            if (!string.IsNullOrWhiteSpace(action) && Enum.TryParse<ArchiveAuditAction>(action, true, out var parsedAction)) events = events.Where(item => item.Action == parsedAction);
+            if (from.HasValue) events = events.Where(item => item.OccurredAt >= from.Value);
+            if (to.HasValue) events = events.Where(item => item.OccurredAt <= to.Value);
 
-            var items = results.OrderByDescending(item => item.Timestamp).ToList();
-            return Ok(new ArchiveAuditSearchResponse(items.Count, items));
+            var total = await events.CountAsync(cancellationToken);
+            var items = await events.OrderByDescending(item => item.OccurredAt).Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(item => new ArchiveAuditEventResponse(item.Id, item.OccurredAt, item.ActorId, item.ActorDisplayName, item.Action.ToString(),
+                    item.EmployeeArchive != null ? item.EmployeeArchive.KellyId : null, item.EmployeeArchive != null ? item.EmployeeArchive.EmployeeName : null,
+                    item.ArchiveDocument != null ? item.ArchiveDocument.OriginalFileName : null, item.Outcome, item.CorrelationId))
+                .ToListAsync(cancellationToken);
+            return Ok(new ArchiveAuditSearchResponse(total, page, pageSize, items));
         }
     }
 
-    public record EmployeeArchiveSummary(string EmployeeId, string EmployeeName, int DocumentCount, int W2Count, int PaystubCount, int CoverageFromYear, int CoverageToYear, string StorageStatus, DateTimeOffset LastIndexedAt);
-    public record EmployeeArchiveSearchResponse(int Total, IReadOnlyList<EmployeeArchiveSummary> Items);
-    public record ArchiveAuditEvent(Guid Id, DateTimeOffset Timestamp, string Actor, string Action, string EmployeeId, string EmployeeName, string Document, string Outcome);
-    public record ArchiveAuditSearchResponse(int Total, IReadOnlyList<ArchiveAuditEvent> Items);
+    public record EmployeeArchiveSummary(Guid Id, string EmployeeId, string EmployeeName, int DocumentCount, int W2Count, int PaystubCount,
+        int? CoverageFromYear, int? CoverageToYear, string StorageStatus, DateTime LastIndexedAt);
+    public record EmployeeArchiveSearchResponse(int Total, int Page, int PageSize, IReadOnlyList<EmployeeArchiveSummary> Items);
+    public record ArchiveAuditEventResponse(Guid Id, DateTimeOffset Timestamp, string ActorId, string ActorDisplayName, string Action,
+        string EmployeeId, string EmployeeName, string Document, string Outcome, string CorrelationId);
+    public record ArchiveAuditSearchResponse(int Total, int Page, int PageSize, IReadOnlyList<ArchiveAuditEventResponse> Items);
 }

@@ -1,6 +1,8 @@
 using KellyServices.PARS.Application;
 using KellyServices.PARS.Infrastructure;
 using KellyServices.PARS.Persistence;
+using KellyServices.PARS.Application.Features.ArchiveIngestion;
+using KellyServices.PARS.WebApi.BackgroundServices;
 using KellyServices.PARS.WebApi.Filters.Exceptions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -33,6 +35,12 @@ namespace KellyServices.PARS.WebApi
             services.AddPersistence(Configuration);
             services.AddApplication();
             services.AddInfrastructure(Configuration);
+            services.Configure<ArchiveIngestionOptions>(Configuration.GetSection(ArchiveIngestionOptions.SectionName));
+            services.AddSingleton<ArchiveMetadataCsvParser>();
+            if (Configuration.GetValue<bool>($"{ArchiveIngestionOptions.SectionName}:Enabled"))
+            {
+                services.AddHostedService<ArchiveIngestionWorker>();
+            }
 
             services.AddControllers();
             services.AddSwaggerGen(c =>

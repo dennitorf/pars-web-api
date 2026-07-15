@@ -1,7 +1,14 @@
+using KellyServices.PARS.Application.Common.Interfaces.Archive;
+using KellyServices.PARS.Domain.Entities.Archive;
+using KellyServices.PARS.Domain.Enums;
+using KellyServices.PARS.Persistence.Contexts;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace KellyServices.PARS.WebApi.Controllers
 {
@@ -10,99 +17,113 @@ namespace KellyServices.PARS.WebApi.Controllers
     [Produces("application/json")]
     public class ArchiveDocumentsController : ControllerBase
     {
-        private static readonly IReadOnlyList<ArchiveDocument> Documents = new[]
-        {
-            new ArchiveDocument(Guid.Parse("8f0dfc99-034a-4d84-b1bf-25b77d007622"), "K1048291", "Jordan Ellis", "•••-••-4821", "W-2", 2024, "Tax year 2024", 112_640, "abfss://raw/w2/2024/K1048291/8f0dfc99-034a-4d84-b1bf-25b77d007622.pdf"),
-            new ArchiveDocument(Guid.Parse("0f3982e2-80b2-45ed-b29e-0090ef885cbc"), "K1048291", "Jordan Ellis", "•••-••-4821", "Paystub", 2024, "Dec 16–31, 2024", 98_304, "abfss://raw/paystub/2024/K1048291/0f3982e2-80b2-45ed-b29e-0090ef885cbc.pdf"),
-            new ArchiveDocument(Guid.Parse("be46b681-b2b7-4a7f-a348-0ea721fca710"), "K1048291", "Jordan Ellis", "•••-••-4821", "Paystub", 2023, "Nov 1–15, 2023", 96_256, "abfss://raw/paystub/2023/K1048291/be46b681-b2b7-4a7f-a348-0ea721fca710.pdf"),
-            new ArchiveDocument(Guid.Parse("cf045521-30f0-403a-8e84-d51180d98f86"), "K2075520", "Morgan Chen", "•••-••-1976", "W-2", 2022, "Tax year 2022", 120_832, "abfss://raw/w2/2022/K2075520/cf045521-30f0-403a-8e84-d51180d98f86.pdf")
-        };
+        private readonly AppDbContext dbContext;
+        private readonly IArchiveFileStore fileStore;
 
-        /// <summary>Searches the curated archive index without opening document files.</summary>
+        public ArchiveDocumentsController(AppDbContext dbContext, IArchiveFileStore fileStore)
+        {
+            this.dbContext = dbContext;
+            this.fileStore = fileStore;
+        }
+
         [HttpGet]
         [ProducesResponseType(typeof(SearchArchiveResponse), 200)]
-        public ActionResult<SearchArchiveResponse> Search(
-            [FromQuery] string employee = null,
-            [FromQuery] string documentType = null,
-            [FromQuery] int? fromYear = null,
-            [FromQuery] int? toYear = null)
+        public async Task<ActionResult<SearchArchiveResponse>> Search([FromQuery] string employee = null, [FromQuery] string documentType = null,
+            [FromQuery] int? fromYear = null, [FromQuery] int? toYear = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50,
+            CancellationToken cancellationToken = default)
         {
-            var query = Documents.AsEnumerable();
-
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 200);
+            var query = dbContext.ArchiveDocuments.AsNoTracking().Include(item => item.EmployeeArchive)
+                .Where(item => item.Status == ArchiveDocumentStatus.Available);
             if (!string.IsNullOrWhiteSpace(employee))
+                query = query.Where(item => item.EmployeeArchive.KellyId.Contains(employee) || item.EmployeeArchive.EmployeeName.Contains(employee));
+            if (!string.IsNullOrWhiteSpace(documentType)) query = query.Where(item => item.DocumentType == documentType);
+            if (fromYear.HasValue) query = query.Where(item => item.DocumentYear >= fromYear.Value);
+            if (toYear.HasValue) query = query.Where(item => item.DocumentYear <= toYear.Value);
+
+            var total = await query.CountAsync(cancellationToken);
+            var items = await query.OrderByDescending(item => item.DocumentYear).ThenBy(item => item.DocumentType)
+                .Skip((page - 1) * pageSize).Take(pageSize).Select(item => new ArchiveDocumentSummary(item.Id, item.EmployeeArchive.KellyId,
+                    item.EmployeeArchive.EmployeeName, item.EmployeeArchive.MaskedTaxId, item.DocumentType, item.DocumentYear, item.DocumentPeriod,
+                    item.FileSizeBytes, item.Status.ToString())).ToListAsync(cancellationToken);
+
+            dbContext.ArchiveAuditEvents.Add(NewAudit(ArchiveAuditAction.Searched, "Success", null, null,
+                $"employee={employee}; documentType={documentType}; fromYear={fromYear}; toYear={toYear}; total={total}"));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Ok(new SearchArchiveResponse(total, page, pageSize, items));
+        }
+
+        [HttpGet("{documentId:guid}/preview")]
+        public async Task<ActionResult<DocumentPreviewResponse>> Preview(Guid documentId, CancellationToken cancellationToken)
+        {
+            var document = await FindAsync(documentId, cancellationToken);
+            if (document is null) return NotFound();
+            dbContext.ArchiveAuditEvents.Add(NewAudit(ArchiveAuditAction.Viewed, "Success", document.EmployeeArchiveId, document.Id, "Preview opened."));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Ok(new DocumentPreviewResponse(ToSummary(document), $"/api/archive-documents/{document.Id}/content?disposition=inline", "Preview access is audited."));
+        }
+
+        [HttpGet("{documentId:guid}/content")]
+        public async Task<IActionResult> Content(Guid documentId, [FromQuery] string disposition = "inline", CancellationToken cancellationToken = default)
+        {
+            var document = await FindAsync(documentId, cancellationToken);
+            if (document is null) return NotFound();
+            var stream = await fileStore.OpenReadAsync(document.BlobContainer, document.BlobName, cancellationToken);
+            return disposition.Equals("attachment", StringComparison.OrdinalIgnoreCase)
+                ? File(stream, document.ContentType, document.OriginalFileName)
+                : File(stream, document.ContentType, enableRangeProcessing: true);
+        }
+
+        [HttpPost("{documentId:guid}/downloads")]
+        public async Task<ActionResult<DocumentDownloadResponse>> CreateDownload(Guid documentId, CancellationToken cancellationToken)
+        {
+            var document = await FindAsync(documentId, cancellationToken);
+            if (document is null) return NotFound();
+            var audit = NewAudit(ArchiveAuditAction.Downloaded, "Success", document.EmployeeArchiveId, document.Id, "Secure download created.");
+            dbContext.ArchiveAuditEvents.Add(audit);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Created($"/api/archive-documents/{document.Id}/downloads/{audit.Id}", new DocumentDownloadResponse(audit.Id, document.Id, "Ready", $"/api/archive-documents/{document.Id}/content?disposition=attachment"));
+        }
+
+        [HttpPost("{documentId:guid}/email-fulfillments")]
+        public async Task<ActionResult<EmailFulfillmentResponse>> Email(Guid documentId, [FromBody] EmailFulfillmentRequest request, CancellationToken cancellationToken)
+        {
+            var document = await FindAsync(documentId, cancellationToken);
+            if (document is null) return NotFound();
+            if (string.IsNullOrWhiteSpace(request.EmployeeEmail) || string.IsNullOrWhiteSpace(request.BusinessReason)) return BadRequest("EmployeeEmail and BusinessReason are required.");
+
+            var fulfillment = new ArchiveFulfillment
             {
-                query = query.Where(document =>
-                    document.EmployeeId.Contains(employee, StringComparison.OrdinalIgnoreCase) ||
-                    document.EmployeeName.Contains(employee, StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (!string.IsNullOrWhiteSpace(documentType))
-            {
-                query = query.Where(document => document.DocumentType.Equals(documentType, StringComparison.OrdinalIgnoreCase));
-            }
-
-            if (fromYear.HasValue) query = query.Where(document => document.Year >= fromYear.Value);
-            if (toYear.HasValue) query = query.Where(document => document.Year <= toYear.Value);
-
-            var items = query.Select(ToSummary).ToList();
-            return Ok(new SearchArchiveResponse(items.Count, items));
+                Id = Guid.NewGuid(), ArchiveDocumentId = document.Id, EmployeeEmail = request.EmployeeEmail,
+                RequestedBy = ActorId(), BusinessReason = request.BusinessReason, Status = FulfillmentStatus.PendingReview,
+                RequestedAt = DateTimeOffset.UtcNow, CreatedDate = DateTime.UtcNow, CreatedBy = ActorId(), IsActive = true
+            };
+            dbContext.ArchiveFulfillments.Add(fulfillment);
+            dbContext.ArchiveAuditEvents.Add(NewAudit(ArchiveAuditAction.Emailed, "PendingReview", document.EmployeeArchiveId, document.Id, $"Fulfillment {fulfillment.Id} queued."));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Accepted(new EmailFulfillmentResponse(fulfillment.Id, document.Id, fulfillment.EmployeeEmail, fulfillment.Status.ToString(), fulfillment.RequestedAt));
         }
 
-        /// <summary>Returns preview metadata and records a document-view audit event in the production implementation.</summary>
-        [HttpGet("{documentId}/preview")]
-        [ProducesResponseType(typeof(DocumentPreviewResponse), 200)]
-        [ProducesResponseType(404)]
-        public ActionResult<DocumentPreviewResponse> Preview(Guid documentId)
+        private Task<ArchiveDocument> FindAsync(Guid documentId, CancellationToken cancellationToken) => dbContext.ArchiveDocuments
+            .Include(item => item.EmployeeArchive).SingleOrDefaultAsync(item => item.Id == documentId && item.Status == ArchiveDocumentStatus.Available, cancellationToken);
+
+        private ArchiveAuditEvent NewAudit(ArchiveAuditAction action, string outcome, Guid? employeeId, Guid? documentId, string details) => new()
         {
-            var document = Find(documentId);
-            if (document is null) return NotFound();
+            Id = Guid.NewGuid(), OccurredAt = DateTimeOffset.UtcNow, ActorId = ActorId(), ActorDisplayName = User.Identity?.Name ?? "PARS user",
+            Action = action, Outcome = outcome, EmployeeArchiveId = employeeId, ArchiveDocumentId = documentId, Details = details,
+            CorrelationId = HttpContext.TraceIdentifier, CreatedDate = DateTime.UtcNow, CreatedBy = ActorId(), IsActive = true
+        };
 
-            return Ok(new DocumentPreviewResponse(
-                ToSummary(document),
-                $"/api/archive-documents/{document.Id}/content?disposition=inline",
-                DateTimeOffset.UtcNow.AddMinutes(5),
-                "Preview access is audited and the signed content URL expires after five minutes."));
-        }
-
-        /// <summary>Creates a short-lived secure download instruction for an authorized caller.</summary>
-        [HttpPost("{documentId}/downloads")]
-        [ProducesResponseType(typeof(DocumentDownloadResponse), 201)]
-        [ProducesResponseType(404)]
-        public ActionResult<DocumentDownloadResponse> CreateDownload(Guid documentId)
-        {
-            var document = Find(documentId);
-            if (document is null) return NotFound();
-
-            var requestId = Guid.NewGuid();
-            return Created($"/api/archive-documents/{document.Id}/downloads/{requestId}",
-                new DocumentDownloadResponse(requestId, document.Id, "Ready", $"/api/archive-documents/{document.Id}/content?disposition=attachment", DateTimeOffset.UtcNow.AddMinutes(5)));
-        }
-
-        /// <summary>Queues an audited employee fulfillment email.</summary>
-        [HttpPost("{documentId}/email-fulfillments")]
-        [ProducesResponseType(typeof(EmailFulfillmentResponse), 202)]
-        [ProducesResponseType(404)]
-        public ActionResult<EmailFulfillmentResponse> Email(Guid documentId, [FromBody] EmailFulfillmentRequest request)
-        {
-            var document = Find(documentId);
-            if (document is null) return NotFound();
-
-            var fulfillmentId = Guid.NewGuid();
-            return Accepted(new EmailFulfillmentResponse(fulfillmentId, document.Id, request.EmployeeEmail, "PendingReview", DateTimeOffset.UtcNow));
-        }
-
-        private static ArchiveDocument Find(Guid documentId) =>
-            Documents.FirstOrDefault(document => document.Id == documentId);
-
-        private static ArchiveDocumentSummary ToSummary(ArchiveDocument document) =>
-            new ArchiveDocumentSummary(document.Id, document.EmployeeId, document.EmployeeName, document.MaskedTaxId, document.DocumentType, document.Year, document.Period, document.SizeBytes, "Available");
+        private string ActorId() => User.FindFirst("oid")?.Value ?? User.Identity?.Name ?? "anonymous";
+        private static ArchiveDocumentSummary ToSummary(ArchiveDocument item) => new(item.Id, item.EmployeeArchive.KellyId, item.EmployeeArchive.EmployeeName,
+            item.EmployeeArchive.MaskedTaxId, item.DocumentType, item.DocumentYear, item.DocumentPeriod, item.FileSizeBytes, item.Status.ToString());
     }
 
-    public record ArchiveDocument(Guid Id, string EmployeeId, string EmployeeName, string MaskedTaxId, string DocumentType, int Year, string Period, long SizeBytes, string StoragePath);
     public record ArchiveDocumentSummary(Guid Id, string EmployeeId, string EmployeeName, string MaskedTaxId, string DocumentType, int Year, string Period, long SizeBytes, string Status);
-    public record SearchArchiveResponse(int Total, IReadOnlyList<ArchiveDocumentSummary> Items);
-    public record DocumentPreviewResponse(ArchiveDocumentSummary Document, string ContentUrl, DateTimeOffset ExpiresAt, string AuditNotice);
-    public record DocumentDownloadResponse(Guid RequestId, Guid DocumentId, string Status, string ContentUrl, DateTimeOffset ExpiresAt);
-    public record EmailFulfillmentRequest(string EmployeeEmail, string RequestedBy, string BusinessReason);
+    public record SearchArchiveResponse(int Total, int Page, int PageSize, IReadOnlyList<ArchiveDocumentSummary> Items);
+    public record DocumentPreviewResponse(ArchiveDocumentSummary Document, string ContentUrl, string AuditNotice);
+    public record DocumentDownloadResponse(Guid RequestId, Guid DocumentId, string Status, string ContentUrl);
+    public record EmailFulfillmentRequest(string EmployeeEmail, string BusinessReason);
     public record EmailFulfillmentResponse(Guid FulfillmentId, Guid DocumentId, string EmployeeEmail, string Status, DateTimeOffset QueuedAt);
 }

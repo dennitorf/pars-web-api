@@ -6,8 +6,8 @@ namespace KellyServices.PARS.Persistence.Seeders
     {        
 
         public void SeedEverything(AppDbContext db)
-        { 
-            db.Database.EnsureCreated();    
+        {
+            // PARS production data is populated only through the audited ingestion worker.
         }
 
         // Add your own seed methods 

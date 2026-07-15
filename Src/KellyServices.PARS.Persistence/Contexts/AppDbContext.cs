@@ -1,4 +1,4 @@
-﻿using KellyServices.PARS.Domain.Entities.Sample;
+﻿using KellyServices.PARS.Domain.Entities.Archive;
 using Microsoft.EntityFrameworkCore;
 
 namespace KellyServices.PARS.Persistence.Contexts
@@ -14,7 +14,10 @@ namespace KellyServices.PARS.Persistence.Contexts
             base.OnModelCreating(modelBuilder);
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
         }        
-        public DbSet<Todo> Todos { set; get; }
-        public DbSet<TodoItem> TodoItems { set; get; }
+        public DbSet<EmployeeArchive> EmployeeArchives { set; get; }
+        public DbSet<ArchiveDocument> ArchiveDocuments { set; get; }
+        public DbSet<ArchiveIngestionBatch> ArchiveIngestionBatches { set; get; }
+        public DbSet<ArchiveAuditEvent> ArchiveAuditEvents { set; get; }
+        public DbSet<ArchiveFulfillment> ArchiveFulfillments { set; get; }
     }
 }
